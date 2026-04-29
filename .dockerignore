@@ -1,0 +1,6 @@
+node_modules
+dist
+!packages/mpl-core-kit-lib/dist
+.git
+.codex
+npm-debug.log*
