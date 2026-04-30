@@ -14,6 +14,10 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners
 } from "@solana/kit";
+import {
+  fetchMaybeCollectionV1,
+  getCreateV2Instruction
+} from "@obrera/mpl-core-kit-lib";
 import { getMintingConfig } from "./config.js";
 
 function createExplorerUrl(kind: "address" | "tx", value: string): string {
@@ -37,17 +41,6 @@ export async function mintProofAsset(args: {
   walletAddress: string;
 }): Promise<ProofMintResult> {
   const config = await getMintingConfig();
-  const helperPath = new URL(
-    "../../../packages/mpl-core-kit-lib/dist/index.mjs",
-    import.meta.url
-  ).pathname;
-  const {
-    fetchMaybeCollectionV1,
-    getCreateV2Instruction
-  } = (await import(helperPath)) as {
-    fetchMaybeCollectionV1: any;
-    getCreateV2Instruction: any;
-  };
 
   try {
     assertIsAddress(args.walletAddress);
