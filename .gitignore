@@ -2,6 +2,10 @@
 .codex
 node_modules/
 dist/
+!packages/mpl-core-kit-lib/dist/
+!packages/mpl-core-kit-lib/dist/**
+!packages/nightshift-art-kit/dist/
+!packages/nightshift-art-kit/dist/**
 .DS_Store
 data/stampquest-db.json
 npm-debug.log*
