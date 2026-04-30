@@ -128,6 +128,19 @@ function fromSubmission(submission: SubmissionPacketSummary): PacketFormState {
   };
 }
 
+function createDemoPacketForm(): PacketFormState {
+  return {
+    title: "Demo approval packet",
+    summary:
+      "Prepared a click-through packet to exercise contributor submission, review approval, and MPL Core proof minting in BountyProof 072.",
+    proofLinks:
+      "https://github.com/obrera/nightshift-072-bountyproof\nhttps://bountyproof072.colmena.dev",
+    tags: "demo, nightshift, proof",
+    note:
+      "Loaded from the in-app demo helper so the full review and mint flow can be tested quickly from one wallet."
+  };
+}
+
 function computeRecommendation(weightedScore: number): string {
   if (weightedScore >= 4.2) {
     return "Approve";
@@ -586,6 +599,31 @@ export function App() {
     }
   }
 
+  async function enableDemoReviewerMode() {
+    setBusyKey("demo:reviewer");
+    setError(null);
+    try {
+      await api("/api/demo/promote-reviewer", { method: "POST" });
+      await refresh();
+      setNotice(
+        "Reviewer demo mode enabled. This wallet can now create, finalize, approve from Queue, and mint from Submissions."
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not enable reviewer demo mode.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function loadDemoPacket() {
+    setEditingSubmissionId(null);
+    setForm(createDemoPacketForm());
+    setNotice(
+      "Demo packet loaded. Create the draft, finalize it, review it from Queue, then return to Submissions to mint."
+    );
+    setError(null);
+  }
+
   async function saveSubmission() {
     if (!program) {
       return;
@@ -947,6 +985,41 @@ export function App() {
       <section className="content-stack">
         {route === "/" ? (
           <>
+            <section className="sheet stack">
+              <div className="section-head">
+                <div>
+                  <p className="eyebrow">Demo path</p>
+                  <h2>One-wallet click-through</h2>
+                </div>
+                <span>{user.role}</span>
+              </div>
+              <p className="muted">
+                Fastest demo path: load the sample packet, create it, finalize it, approve it from
+                Queue, then come back here to mint the proof asset.
+              </p>
+              <div className="action-row">
+                <button className="ghost-button" onClick={loadDemoPacket} type="button">
+                  Load demo packet
+                </button>
+                {user.role === "contributor" ? (
+                  <button
+                    className="primary-button"
+                    disabled={busyKey === "demo:reviewer"}
+                    onClick={() => void enableDemoReviewerMode()}
+                    type="button"
+                  >
+                    {busyKey === "demo:reviewer"
+                      ? "Enabling reviewer mode..."
+                      : "Enable reviewer demo mode"}
+                  </button>
+                ) : null}
+              </div>
+              <small className="muted">
+                {user.role === "contributor"
+                  ? "Reviewer demo mode is explicit and temporary product scaffolding so one wallet can complete the full review and mint flow without a second account."
+                  : "This wallet already has enough access to complete the full demo flow without switching accounts."}
+              </small>
+            </section>
             <section className="sheet stack">
               <div className="section-head">
                 <div>

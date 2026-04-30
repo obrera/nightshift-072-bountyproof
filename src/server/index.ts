@@ -891,6 +891,45 @@ app.post(
 );
 
 app.post(
+  "/api/demo/promote-reviewer",
+  asyncRoute(async (request, response) => {
+    const auth = await requireUser(request, response);
+    if (!auth) {
+      return;
+    }
+
+    const updated = await db.update((state) => {
+      const target = state.users.find((entry) => entry.id === auth.user.id);
+      if (!target) {
+        throw new Error("User not found.");
+      }
+
+      const resolvedRole = resolveUserRole(target);
+      if (resolvedRole === "operator" || resolvedRole === "reviewer") {
+        return sanitizeUser({ ...target, role: resolvedRole });
+      }
+
+      target.role = "reviewer";
+      state.auditTrail.push(
+        makeAuditEvent({
+          actor: auth.user,
+          kind: "role_updated",
+          subjectType: "user",
+          subjectId: target.id,
+          headline: `Enabled reviewer demo mode for ${target.displayName}.`,
+          detail:
+            "Demo helper promoted the active wallet so one account can complete the review and mint flow."
+        })
+      );
+
+      return sanitizeUser({ ...target, role: resolveUserRole(target) });
+    });
+
+    response.json(updated);
+  })
+);
+
+app.post(
   "/api/submissions",
   asyncRoute(async (request, response) => {
     const auth = await requireUser(request, response);
