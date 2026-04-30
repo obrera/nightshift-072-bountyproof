@@ -7,17 +7,17 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
-    "dev:server": "tsx watch src/server/index.ts",
-    "build": "npm run build:client && npm run build:server",
+    "dev:server": "npm --prefix packages/nightshift-art-kit run build && tsx watch src/server/index.ts",
+    "build": "npm --prefix packages/nightshift-art-kit run build && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "typecheck": "npm --prefix packages/nightshift-art-kit run build && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "start": "node dist/server/index.js"
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",
     "@obrera/mpl-core-kit-lib": "file:packages/mpl-core-kit-lib",
-    "@resvg/resvg-js": "^2.6.2",
+    "@obrera/nightshift-art-kit": "file:packages/nightshift-art-kit",
     "@solana/kit": "6.8.0",
     "@wallet-ui/react": "4.0.3",
     "express": "5.2.1",

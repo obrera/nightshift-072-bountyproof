@@ -1,4 +1,9 @@
-import { Resvg } from "@resvg/resvg-js";
+import { buildNightshiftSocialCard } from "@obrera/nightshift-art-kit/composition/nightshift-social-card";
+import { buildNightshiftMetadataImage } from "@obrera/nightshift-art-kit/render/nightshift-metadata-image";
+import { renderSvgToPng } from "@obrera/nightshift-art-kit/render/render-svg-to-png";
+import { createNightshiftSeededPalette } from "@obrera/nightshift-art-kit/seed/nightshift-seeded-palette";
+import type { NightshiftArtStyle } from "@obrera/nightshift-art-kit/styles/nightshift-art-style";
+import { SignalNoirStyle } from "@obrera/nightshift-art-kit/styles/signal-noir-style";
 import {
   address,
   assertIsAddress,
@@ -1467,12 +1472,11 @@ app.post(
   })
 );
 
-function renderSvgToPng(svg: string, width: number) {
-  const resvg = new Resvg(svg, {
-    fitTo: { mode: "width", value: width },
-    font: { loadSystemFonts: true }
-  });
-  return resvg.render().asPng();
+function getProofImageStyle(submissionId: string): NightshiftArtStyle {
+  return {
+    ...SignalNoirStyle,
+    palette: createNightshiftSeededPalette(`bountyproof:${submissionId}`)
+  };
 }
 
 function buildProofImageSvg(args: {
@@ -1481,52 +1485,18 @@ function buildProofImageSvg(args: {
   submission: SubmissionPacketRecord;
   submitter?: UserRecord;
 }) {
+  const recommendation = (args.review?.recommendation ?? "pending").toUpperCase();
+  const submitter = shortWalletAddress(args.submitter?.walletAddress ?? "unknown wallet");
   const tags = args.submission.tags.slice(0, 3).join(" • ") || "untagged";
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#060B12"/>
-      <stop offset="0.55" stop-color="#111D2D"/>
-      <stop offset="1" stop-color="#091119"/>
-    </linearGradient>
-    <linearGradient id="line" x1="160" y1="180" x2="980" y2="980" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#67E8C8"/>
-      <stop offset="1" stop-color="#F0B862"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="1200" rx="72" fill="url(#bg)"/>
-  <circle cx="190" cy="180" r="120" fill="#67E8C8" fill-opacity="0.12"/>
-  <circle cx="1020" cy="1020" r="170" fill="#F0B862" fill-opacity="0.10"/>
-  <rect x="88" y="88" width="1024" height="1024" rx="52" fill="#0A121C" stroke="url(#line)" stroke-opacity="0.32"/>
-  <text x="140" y="180" fill="#67E8C8" font-size="34" font-family="Georgia, serif" letter-spacing="8">BOUNTYPROOF</text>
-  <text x="140" y="248" fill="#F5F7FB" font-size="88" font-family="Georgia, serif">${args.submission.title
-    .slice(0, 32)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <text x="140" y="320" fill="#90A4B9" font-size="30" font-family="Arial, sans-serif">${args.program.title
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <rect x="140" y="396" width="920" height="2" fill="url(#line)" fill-opacity="0.35"/>
-  <text x="140" y="478" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">STATUS</text>
-  <text x="140" y="540" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${args.submission.status.toUpperCase()}</text>
-  <text x="140" y="640" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">RECOMMENDATION</text>
-  <text x="140" y="702" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${(
-    args.review?.recommendation ?? "pending"
-  ).toUpperCase()}</text>
-  <text x="140" y="802" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">SUBMITTER</text>
-  <text x="140" y="864" fill="#F5F7FB" font-size="44" font-family="Arial, sans-serif">${shortWalletAddress(
-    args.submitter?.walletAddress ?? ""
-  )}</text>
-  <text x="140" y="960" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">TAGS</text>
-  <text x="140" y="1022" fill="#F5F7FB" font-size="40" font-family="Arial, sans-serif">${tags
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <text x="140" y="1080" fill="#90A4B9" font-size="24" font-family="Arial, sans-serif">Nightshift build 072 • MPL Core proof asset</text>
-</svg>`;
+  const style = getProofImageStyle(args.submission.id);
+
+  return buildNightshiftSocialCard({
+    description: `${args.program.title} • ${submitter} • ${tags}`,
+    eyebrow: `BOUNTYPROOF • ${recommendation}`,
+    style,
+    subtitle: `${args.submission.status.toUpperCase()} • Nightshift build 072 proof asset`,
+    title: args.submission.title.slice(0, 34)
+  });
 }
 
 app.get(
@@ -1548,8 +1518,10 @@ app.get(
       name: `BountyProof 072: ${submission.title}`,
       symbol: "BP072",
       description: `Collection-backed proof asset for the approved BountyProof submission "${submission.title}".`,
-      image: imageUrl,
-      external_url: `${baseUrl}/proofs`,
+      ...buildNightshiftMetadataImage({
+        externalUrl: `${baseUrl}/proofs`,
+        imageUrl
+      }),
       attributes: [
         { trait_type: "Program", value: program.title },
         { trait_type: "Status", value: submission.status },
@@ -1557,15 +1529,6 @@ app.get(
         { trait_type: "Weighted Score", value: review?.weightedScore?.toFixed(2) ?? "0.00" },
         { trait_type: "Build", value: "072" }
       ],
-      properties: {
-        category: "image",
-        files: [
-          {
-            uri: imageUrl,
-            type: "image/png"
-          }
-        ]
-      },
       collection: {
         name: "BountyProof",
         family: "Nightshift",
@@ -1609,7 +1572,11 @@ app.get(
     const submitter = state.users.find((entry) => entry.id === submission.submitterUserId);
     response
       .type("image/png")
-      .send(renderSvgToPng(buildProofImageSvg({ program, review, submission, submitter }), 1200));
+      .send(
+        renderSvgToPng(buildProofImageSvg({ program, review, submission, submitter }), {
+          width: 1200
+        })
+      );
   })
 );
 

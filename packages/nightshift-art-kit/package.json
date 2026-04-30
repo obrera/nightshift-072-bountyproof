@@ -1,0 +1,37 @@
+{
+  "name": "@obrera/nightshift-art-kit",
+  "version": "0.1.0",
+  "description": "Reusable visual primitives, seeded style helpers, and SVG-to-PNG rendering for Nightshift builds.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./color/nightshift-palettes": "./dist/color/nightshift-palettes.js",
+    "./composition/nightshift-badge-frame": "./dist/composition/nightshift-badge-frame.js",
+    "./composition/nightshift-social-card": "./dist/composition/nightshift-social-card.js",
+    "./render/nightshift-metadata-image": "./dist/render/nightshift-metadata-image.js",
+    "./render/render-svg-to-png": "./dist/render/render-svg-to-png.js",
+    "./seed/hash-seed": "./dist/seed/hash-seed.js",
+    "./seed/nightshift-seeded-palette": "./dist/seed/nightshift-seeded-palette.js",
+    "./seed/pick-seeded-value": "./dist/seed/pick-seeded-value.js",
+    "./styles/glass-forge-style": "./dist/styles/glass-forge-style.js",
+    "./styles/nightshift-art-style": "./dist/styles/nightshift-art-style.js",
+    "./styles/nightshift-styles": "./dist/styles/nightshift-styles.js",
+    "./styles/paper-sprint-style": "./dist/styles/paper-sprint-style.js",
+    "./styles/signal-noir-style": "./dist/styles/signal-noir-style.js",
+    "./type/nightshift-font-pair": "./dist/type/nightshift-font-pair.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-types": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.2",
+    "typescript": "^5.8.3"
+  }
+}
