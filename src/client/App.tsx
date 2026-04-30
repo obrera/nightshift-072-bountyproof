@@ -798,25 +798,31 @@ export function App() {
               No wallet providers detected. Install a Solana wallet extension, then reload.
             </p>
           ) : (
-            wallets.map((wallet) => (
-              <div className="wallet-stack" key={wallet.name}>
-                <WalletConnectOption busy={false} wallet={wallet} />
-                <WalletSignInOption
-                  onError={setError}
-                  onNotice={setNotice}
-                  refresh={refresh}
-                  wallet={wallet}
-                />
-                {("solana:signIn" in wallet.features) ? null : (
+            wallets.map((wallet) => {
+              const supportsNativeSignIn = Boolean(
+                wallet.features && "solana:signIn" in wallet.features
+              );
+
+              return (
+                <div className="wallet-stack" key={wallet.name}>
+                  <WalletConnectOption busy={false} wallet={wallet} />
+                  {supportsNativeSignIn ? (
+                    <WalletSignInOption
+                      onError={setError}
+                      onNotice={setNotice}
+                      refresh={refresh}
+                      wallet={wallet}
+                    />
+                  ) : null}
                   <WalletMessageSignInOption
                     onError={setError}
                     onNotice={setNotice}
                     refresh={refresh}
                     wallet={wallet}
                   />
-                )}
-              </div>
-            ))
+                </div>
+              );
+            })
           )}
           {error ? <p className="banner banner-danger">{error}</p> : null}
           {notice ? <p className="banner">{notice}</p> : null}
