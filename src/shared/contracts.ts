@@ -101,7 +101,7 @@ export interface ReviewRecord {
   decisionAt?: string;
 }
 
-export type ProofMintStatus = "blocked" | "submitted" | "minted" | "failed";
+export type ProofMintStatus = "blocked" | "prepared" | "minted" | "failed";
 
 export interface ProofMintRecord {
   id: string;
@@ -207,13 +207,37 @@ export interface UpdateUserRoleRequest {
 
 export interface RuntimeMintingStatus {
   enabled: boolean;
-  status: "ready" | "missing_public_base_url" | "missing_signer" | "missing_collection";
+  status: "ready" | "missing_public_base_url" | "missing_collection" | "missing_signer";
   message: string;
   publicBaseUrlConfigured: boolean;
-  signerConfigured: boolean;
   collectionConfigured: boolean;
   collectionAddress?: string;
-  executionMode: "collection-backed-mpl-core";
+  signerConfigured: boolean;
+  executionMode: "wallet-co-signed-mpl-core";
+}
+
+export interface PrepareProofMintPlan {
+  submissionId: string;
+  walletAddress: string;
+  assetAddress: string;
+  mintName: string;
+  metadataUrl: string;
+  collectionAddress: string;
+  rpcUrl: string;
+  transaction: string;
+  transactionEncoding: "base64";
+}
+
+export interface PrepareProofMintResponse {
+  proofMintId: string;
+  proofMint: ProofMintSummary;
+  plan: PrepareProofMintPlan;
+}
+
+export interface ConfirmProofMintRequest {
+  assetAddress: string;
+  signature: string;
+  transaction: string;
 }
 
 export interface BountyProgramSummary {

@@ -22,8 +22,10 @@ import type {
   AuditEventRecord,
   AuditEventSummary,
   BootstrapResponse,
+  ConfirmProofMintRequest,
   BountyProgramRecord,
   BountyProgramSummary,
+  PrepareProofMintResponse,
   ProofMintRecord,
   ProofShelfItem,
   ReviewDecision,
@@ -48,7 +50,10 @@ import type {
 } from "../shared/contracts.js";
 import { FileDatabase } from "./db.js";
 import { getMintingStatus } from "./minting/config.js";
-import { mintProofAsset } from "./minting/solana.js";
+import {
+  prepareProofMintPlan,
+  verifyMintedProofAsset
+} from "./minting/solana.js";
 import {
   buildSiwsMessage,
   clearCookieHeader,
@@ -1320,7 +1325,7 @@ app.post(
 );
 
 app.post(
-  "/api/submissions/:submissionId/mint",
+  "/api/submissions/:submissionId/mint/prepare",
   asyncRoute(async (request, response) => {
     const auth = await requireUser(request, response);
     if (!auth) {
@@ -1329,7 +1334,123 @@ app.post(
 
     const submissionId = getRouteParam(request, "submissionId");
     const mintingStatus = getMintingStatus();
-    const result = await db.update(async (state) => {
+
+    const submission = auth.state.submissions.find((entry) => entry.id === submissionId);
+    if (!submission) {
+      throw new Error("Submission not found.");
+    }
+    if (submission.submitterUserId !== auth.user.id) {
+      throw new Error("Only the submitting wallet can mint this proof.");
+    }
+    if (submission.status !== "approved") {
+      throw new Error("Only approved submissions can mint proof assets.");
+    }
+
+    if (!mintingStatus.enabled) {
+      await db.update((state) => {
+        const existing: ProofMintRecord =
+          state.proofMints.find((entry) => entry.submissionId === submissionId) ??
+          {
+            id: createId("proof"),
+            submissionId,
+            userId: auth.user.id,
+            walletAddress: auth.user.walletAddress,
+            status: "blocked",
+            createdAt: nowUtc(),
+            updatedAt: nowUtc(),
+            attemptCount: 0
+          };
+
+        existing.attemptCount += 1;
+        existing.updatedAt = nowUtc();
+        existing.walletAddress = auth.user.walletAddress;
+        existing.status = "blocked";
+        existing.blockerCode = mintingStatus.status;
+        existing.blockerMessage = mintingStatus.message;
+        existing.collectionAddress = mintingStatus.collectionAddress;
+        state.proofMints = state.proofMints.filter((entry) => entry.submissionId !== submissionId);
+        state.proofMints.push(existing);
+        state.auditTrail.push(
+          makeAuditEvent({
+            actor: auth.user,
+            kind: "proof_blocked",
+            subjectType: "proof",
+            subjectId: existing.id,
+            headline: `Proof mint blocked for "${submission.title}".`,
+            detail: mintingStatus.message
+          })
+        );
+      });
+      response.status(400).json({ error: mintingStatus.message });
+      return;
+    }
+
+    const baseUrl = getEnv("BOUNTYPROOF_PUBLIC_BASE_URL")!;
+    const metadataUrl = `${baseUrl}/api/proofs/${submission.id}/metadata.json`;
+    const mintName = `BountyProof 072 - ${submission.title.slice(0, 24)}`;
+    const plan = await prepareProofMintPlan({
+      submissionId,
+      walletAddress: auth.user.walletAddress,
+      mintName,
+      metadataUrl
+    });
+
+    const payload = await db.update(async (state) => {
+      const currentSubmission = state.submissions.find((entry) => entry.id === submissionId);
+      if (!currentSubmission) {
+        throw new Error("Submission not found.");
+      }
+
+      const existing: ProofMintRecord =
+        state.proofMints.find((entry) => entry.submissionId === submissionId) ??
+        {
+          id: createId("proof"),
+          submissionId,
+          userId: auth.user.id,
+          walletAddress: auth.user.walletAddress,
+          status: "prepared",
+          createdAt: nowUtc(),
+          updatedAt: nowUtc(),
+          attemptCount: 0
+        };
+
+      existing.attemptCount += 1;
+      existing.updatedAt = nowUtc();
+      existing.walletAddress = auth.user.walletAddress;
+      existing.status = "prepared";
+      existing.blockerCode = undefined;
+      existing.blockerMessage = undefined;
+      existing.collectionAddress = plan.collectionAddress;
+      existing.assetAddress = plan.assetAddress;
+      existing.signature = undefined;
+      existing.explorerUrls = undefined;
+
+      state.proofMints = state.proofMints.filter((entry) => entry.submissionId !== submissionId);
+      state.proofMints.push(existing);
+
+      const prepared: PrepareProofMintResponse = {
+        proofMintId: existing.id,
+        proofMint: summarizeProofMint(existing)!,
+        plan
+      };
+      return prepared;
+    });
+
+    response.json(payload);
+  })
+);
+
+app.post(
+  "/api/submissions/:submissionId/mint/confirm",
+  asyncRoute(async (request, response) => {
+    const auth = await requireUser(request, response);
+    if (!auth) {
+      return;
+    }
+
+    const submissionId = getRouteParam(request, "submissionId");
+    const body = request.body as ConfirmProofMintRequest;
+    const result = await db.update((state) => {
       const submission = state.submissions.find((entry) => entry.id === submissionId);
       if (!submission) {
         throw new Error("Submission not found.");
@@ -1348,90 +1469,69 @@ app.post(
           submissionId,
           userId: auth.user.id,
           walletAddress: auth.user.walletAddress,
-          status: "blocked",
+          status: "prepared",
           createdAt: nowUtc(),
           updatedAt: nowUtc(),
-          attemptCount: 0
+          attemptCount: 1
         };
 
-      existing.attemptCount += 1;
       existing.updatedAt = nowUtc();
       existing.walletAddress = auth.user.walletAddress;
-
-      if (!mintingStatus.enabled) {
-        existing.status = "blocked";
-        existing.blockerCode = mintingStatus.status;
-        existing.blockerMessage = mintingStatus.message;
-        existing.collectionAddress = mintingStatus.collectionAddress;
-        state.proofMints = state.proofMints.filter((entry) => entry.submissionId !== submissionId);
-        state.proofMints.push(existing);
-        state.auditTrail.push(
-          makeAuditEvent({
-            actor: auth.user,
-            kind: "proof_blocked",
-            subjectType: "proof",
-            subjectId: existing.id,
-            headline: `Proof mint blocked for "${submission.title}".`,
-            detail: mintingStatus.message
-          })
-        );
-        return summarizeSubmission(state, submission);
+      if (!existing.assetAddress) {
+        throw new Error("Proof mint was not prepared before confirmation.");
+      }
+      if (existing.assetAddress !== (body.assetAddress ?? "")) {
+        throw new Error("Mint confirmation did not match the prepared asset address.");
       }
 
-      existing.status = "submitted";
+      return existing;
+    });
+
+    const verification = await verifyMintedProofAsset({
+      assetAddress: body.assetAddress ?? "",
+      serializedTransaction: body.transaction ?? "",
+      signatureValue: body.signature ?? "",
+      walletAddress: auth.user.walletAddress
+    });
+
+    const persisted = await db.update((state) => {
+      const submission = state.submissions.find((entry) => entry.id === submissionId);
+      if (!submission) {
+        throw new Error("Submission not found.");
+      }
+
+      const existing = state.proofMints.find((entry) => entry.submissionId === submissionId);
+      if (!existing) {
+        throw new Error("Proof mint was not prepared before confirmation.");
+      }
+
+      existing.updatedAt = nowUtc();
+      existing.walletAddress = auth.user.walletAddress;
+      existing.status = "minted";
       existing.blockerCode = undefined;
       existing.blockerMessage = undefined;
-      existing.collectionAddress = mintingStatus.collectionAddress;
+      existing.assetAddress = verification.assetAddress;
+      existing.signature = verification.signature;
+      existing.collectionAddress = verification.collectionAddress;
+      existing.explorerUrls = verification.explorerUrls;
+
       state.proofMints = state.proofMints.filter((entry) => entry.submissionId !== submissionId);
       state.proofMints.push(existing);
-
-      try {
-        const baseUrl = getEnv("BOUNTYPROOF_PUBLIC_BASE_URL")!;
-        const metadataUrl = `${baseUrl}/api/proofs/${submission.id}/metadata.json`;
-        const mintResult = await mintProofAsset({
-          name: `BountyProof 072 - ${submission.title.slice(0, 24)}`,
-          metadataUrl,
-          walletAddress: auth.user.walletAddress
-        });
-
-        existing.status = "minted";
-        existing.updatedAt = nowUtc();
-        existing.assetAddress = mintResult.assetAddress;
-        existing.signature = mintResult.signature;
-        existing.collectionAddress = mintResult.collectionAddress;
-        existing.explorerUrls = mintResult.explorerUrls;
-        state.auditTrail.push(
-          makeAuditEvent({
-            actor: auth.user,
-            kind: "proof_minted",
-            subjectType: "proof",
-            subjectId: existing.id,
-            headline: `Minted proof asset for "${submission.title}".`,
-            detail: `Asset ${mintResult.assetAddress} was minted to the authenticated session wallet.`
-          })
-        );
-      } catch (error) {
-        existing.status = "failed";
-        existing.updatedAt = nowUtc();
-        existing.blockerCode = "mint_failed";
-        existing.blockerMessage =
-          error instanceof Error ? error.message : "Minting failed unexpectedly.";
-        state.auditTrail.push(
-          makeAuditEvent({
-            actor: auth.user,
-            kind: "proof_failed",
-            subjectType: "proof",
-            subjectId: existing.id,
-            headline: `Minting failed for "${submission.title}".`,
-            detail: existing.blockerMessage
-          })
-        );
-      }
+      state.auditTrail.push(
+        makeAuditEvent({
+          actor: auth.user,
+          kind: "proof_minted",
+          subjectType: "proof",
+          subjectId: existing.id,
+          headline: `Minted proof asset for "${submission.title}".`,
+          detail: `Asset ${verification.assetAddress} was co-signed, wallet-submitted, and verified on-chain for the authenticated session wallet.`
+        })
+      );
 
       return summarizeSubmission(state, submission);
     });
 
-    response.json(result);
+    response.json(persisted);
   })
 );
 
