@@ -1,4 +1,5 @@
 import {
+  useWalletUiSigner,
   SolanaSignIn,
   type UiWallet,
   WalletUiIcon,
@@ -7,9 +8,12 @@ import {
   useWalletUi,
   useWalletUiWallet
 } from "@wallet-ui/react";
+import { getBase58Decoder, getTransactionDecoder, type TransactionSendingSigner } from "@solana/kit";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import type {
   BootstrapResponse,
+  ConfirmProofMintRequest,
+  PrepareProofMintResponse,
   ProofShelfItem,
   ReviewQueueEntry,
   ReviewRubricScore,
@@ -68,6 +72,11 @@ function formatUtc(value?: string): string {
 
 function shortAddress(value: string): string {
   return value.length <= 12 ? value : `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function decodeBase64ToBytes(value: string): Uint8Array {
+  const decoded = window.atob(value);
+  return Uint8Array.from(decoded, (char) => char.charCodeAt(0));
 }
 
 function routeLabel(route: RouteId): string {
@@ -520,6 +529,23 @@ function ReviewQueueCard({
   );
 }
 
+function WalletSignerBridge({
+  account,
+  onReady
+}: {
+  account: NonNullable<ReturnType<typeof useWalletUi>["account"]>;
+  onReady: (signer: TransactionSendingSigner<string> | null) => void;
+}) {
+  const signer = useWalletUiSigner({ account });
+
+  useEffect(() => {
+    onReady(signer as TransactionSendingSigner<string>);
+    return () => onReady(null);
+  }, [onReady, signer]);
+
+  return null;
+}
+
 export function App() {
   const [bootstrap, setBootstrap] = useState<BootstrapResponse | null>(null);
   const [route, setRoute] = useState<RouteId>(detectRoute(window.location.pathname));
@@ -529,6 +555,7 @@ export function App() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
   const [form, setForm] = useState<PacketFormState>(emptyForm);
+  const [walletSigner, setWalletSigner] = useState<TransactionSendingSigner<string> | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<
     Record<string, { scores: ReviewRubricScore[]; notes: string }>
   >({});
@@ -540,6 +567,12 @@ export function App() {
   const hasWalletMismatch = Boolean(
     user && connectedWalletAddress && connectedWalletAddress !== user.walletAddress
   );
+
+  useEffect(() => {
+    if (!account) {
+      setWalletSigner(null);
+    }
+  }, [account]);
 
   async function refresh() {
     const data = await api<BootstrapResponse>("/api/bootstrap");
@@ -672,11 +705,38 @@ export function App() {
     setBusyKey(`mint:${submissionId}`);
     setError(null);
     try {
-      await api(`/api/submissions/${submissionId}/mint`, { method: "POST" });
-      setNotice("Mint attempt recorded.");
+      if (!account) {
+        throw new Error("Connect the submitting wallet before minting.");
+      }
+      if (hasWalletMismatch) {
+        throw new Error("Connected wallet must match the authenticated session wallet.");
+      }
+      if (!walletSigner) {
+        throw new Error("Wallet signer is not ready yet. Retry once the wallet finishes connecting.");
+      }
+
+      const prepared = await api<PrepareProofMintResponse>(
+        `/api/submissions/${submissionId}/mint/prepare`,
+        { method: "POST" }
+      );
+      const transactionBytes = decodeBase64ToBytes(prepared.plan.transaction);
+      const transaction = getTransactionDecoder().decode(transactionBytes);
+      const [signatureBytes] = await walletSigner.signAndSendTransactions([transaction]);
+      const confirmBody: ConfirmProofMintRequest = {
+        assetAddress: prepared.plan.assetAddress,
+        signature: getBase58Decoder().decode(signatureBytes!),
+        transaction: prepared.plan.transaction
+      };
+
+      await api(`/api/submissions/${submissionId}/mint/confirm`, {
+        method: "POST",
+        body: JSON.stringify(confirmBody)
+      });
+      setNotice("Wallet co-signed proof minted and verified.");
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not mint proof.");
+      await refresh().catch(() => undefined);
     } finally {
       setBusyKey(null);
     }
@@ -874,6 +934,7 @@ export function App() {
 
   return (
     <main className="app-shell">
+      {account ? <WalletSignerBridge account={account} onReady={setWalletSigner} /> : null}
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
       <header className="topbar">
