@@ -161,23 +161,20 @@ function WalletConnectOption({
 }
 
 function WalletSignInOption({
+  account,
   onError,
   onNotice,
   refresh,
   wallet
 }: {
+  account: UiWallet["accounts"][number];
   onError: (value: string | null) => void;
   onNotice: (value: string | null) => void;
   refresh: () => Promise<void>;
   wallet: UiWallet;
 }) {
-  const account = wallet.accounts?.[0];
   const signIn = useSignIn(wallet);
   const [isBusy, setIsBusy] = useState(false);
-
-  if (!account) {
-    return null;
-  }
 
   return (
     <button
@@ -216,23 +213,20 @@ function WalletSignInOption({
 }
 
 function WalletMessageSignInOption({
+  account,
   onError,
   onNotice,
   refresh,
   wallet
 }: {
+  account: UiWallet["accounts"][number];
   onError: (value: string | null) => void;
   onNotice: (value: string | null) => void;
   refresh: () => Promise<void>;
   wallet: UiWallet;
 }) {
-  const account = wallet.accounts?.[0];
   const [isBusy, setIsBusy] = useState(false);
   const signMessage = useSignMessage(account);
-
-  if (!account) {
-    return null;
-  }
 
   return (
     <button
@@ -799,6 +793,7 @@ export function App() {
             </p>
           ) : (
             wallets.map((wallet) => {
+              const account = wallet.accounts?.[0];
               const supportsNativeSignIn = Boolean(
                 wallet.features && "solana:signIn" in wallet.features
               );
@@ -806,20 +801,24 @@ export function App() {
               return (
                 <div className="wallet-stack" key={wallet.name}>
                   <WalletConnectOption busy={false} wallet={wallet} />
-                  {supportsNativeSignIn ? (
+                  {account && supportsNativeSignIn ? (
                     <WalletSignInOption
+                      account={account}
                       onError={setError}
                       onNotice={setNotice}
                       refresh={refresh}
                       wallet={wallet}
                     />
                   ) : null}
-                  <WalletMessageSignInOption
-                    onError={setError}
-                    onNotice={setNotice}
-                    refresh={refresh}
-                    wallet={wallet}
-                  />
+                  {account ? (
+                    <WalletMessageSignInOption
+                      account={account}
+                      onError={setError}
+                      onNotice={setNotice}
+                      refresh={refresh}
+                      wallet={wallet}
+                    />
+                  ) : null}
                 </div>
               );
             })
