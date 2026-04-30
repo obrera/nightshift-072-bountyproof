@@ -1,3 +1,4 @@
+import { Resvg } from "@resvg/resvg-js";
 import {
   address,
   assertIsAddress,
@@ -1466,13 +1467,66 @@ app.post(
   })
 );
 
-function createDiceBearGlassPngUrl(seed: string) {
-  const url = new URL(`https://api.dicebear.com/9.x/glass/png`);
-  url.searchParams.set("seed", seed);
-  url.searchParams.set("size", "512");
-  url.searchParams.set("scale", "90");
-  url.searchParams.set("backgroundType", "solid,gradientLinear");
-  return url.toString();
+function renderSvgToPng(svg: string, width: number) {
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: width },
+    font: { loadSystemFonts: true }
+  });
+  return resvg.render().asPng();
+}
+
+function buildProofImageSvg(args: {
+  program: BountyProgramRecord;
+  review?: ReviewRecord;
+  submission: SubmissionPacketRecord;
+  submitter?: UserRecord;
+}) {
+  const tags = args.submission.tags.slice(0, 3).join(" • ") || "untagged";
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#060B12"/>
+      <stop offset="0.55" stop-color="#111D2D"/>
+      <stop offset="1" stop-color="#091119"/>
+    </linearGradient>
+    <linearGradient id="line" x1="160" y1="180" x2="980" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8C8"/>
+      <stop offset="1" stop-color="#F0B862"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1200" rx="72" fill="url(#bg)"/>
+  <circle cx="190" cy="180" r="120" fill="#67E8C8" fill-opacity="0.12"/>
+  <circle cx="1020" cy="1020" r="170" fill="#F0B862" fill-opacity="0.10"/>
+  <rect x="88" y="88" width="1024" height="1024" rx="52" fill="#0A121C" stroke="url(#line)" stroke-opacity="0.32"/>
+  <text x="140" y="180" fill="#67E8C8" font-size="34" font-family="Georgia, serif" letter-spacing="8">BOUNTYPROOF</text>
+  <text x="140" y="248" fill="#F5F7FB" font-size="88" font-family="Georgia, serif">${args.submission.title
+    .slice(0, 32)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")}</text>
+  <text x="140" y="320" fill="#90A4B9" font-size="30" font-family="Arial, sans-serif">${args.program.title
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")}</text>
+  <rect x="140" y="396" width="920" height="2" fill="url(#line)" fill-opacity="0.35"/>
+  <text x="140" y="478" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">STATUS</text>
+  <text x="140" y="540" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${args.submission.status.toUpperCase()}</text>
+  <text x="140" y="640" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">RECOMMENDATION</text>
+  <text x="140" y="702" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${(
+    args.review?.recommendation ?? "pending"
+  ).toUpperCase()}</text>
+  <text x="140" y="802" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">SUBMITTER</text>
+  <text x="140" y="864" fill="#F5F7FB" font-size="44" font-family="Arial, sans-serif">${shortWalletAddress(
+    args.submitter?.walletAddress ?? ""
+  )}</text>
+  <text x="140" y="960" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">TAGS</text>
+  <text x="140" y="1022" fill="#F5F7FB" font-size="40" font-family="Arial, sans-serif">${tags
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")}</text>
+  <text x="140" y="1080" fill="#90A4B9" font-size="24" font-family="Arial, sans-serif">Nightshift build 072 • MPL Core proof asset</text>
+</svg>`;
 }
 
 app.get(
@@ -1489,7 +1543,7 @@ app.get(
     const review = state.reviews.find((entry) => entry.submissionId === submission.id);
     const minting = getMintingStatus();
     const baseUrl = getEnv("BOUNTYPROOF_PUBLIC_BASE_URL") ?? `http://localhost:${port}`;
-    const imageUrl = createDiceBearGlassPngUrl(`bountyproof-${submission.id}-${submission.submitterUserId}`);
+    const imageUrl = `${baseUrl}/api/proofs/${submission.id}/image.png`;
     response.json({
       name: `BountyProof 072: ${submission.title}`,
       symbol: "BP072",
@@ -1534,53 +1588,28 @@ app.get(
     const program = getProgram(state, submission.programId);
     const review = state.reviews.find((entry) => entry.submissionId === submission.id);
     const submitter = state.users.find((entry) => entry.id === submission.submitterUserId);
-    const tags = submission.tags.slice(0, 3).join(" • ") || "untagged";
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#060B12"/>
-      <stop offset="0.55" stop-color="#111D2D"/>
-      <stop offset="1" stop-color="#091119"/>
-    </linearGradient>
-    <linearGradient id="line" x1="160" y1="180" x2="980" y2="980" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#67E8C8"/>
-      <stop offset="1" stop-color="#F0B862"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="1200" rx="72" fill="url(#bg)"/>
-  <circle cx="190" cy="180" r="120" fill="#67E8C8" fill-opacity="0.12"/>
-  <circle cx="1020" cy="1020" r="170" fill="#F0B862" fill-opacity="0.10"/>
-  <rect x="88" y="88" width="1024" height="1024" rx="52" fill="#0A121C" stroke="url(#line)" stroke-opacity="0.32"/>
-  <text x="140" y="180" fill="#67E8C8" font-size="34" font-family="Georgia, serif" letter-spacing="8">BOUNTYPROOF</text>
-  <text x="140" y="248" fill="#F5F7FB" font-size="88" font-family="Georgia, serif">${submission.title
-    .slice(0, 32)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <text x="140" y="320" fill="#90A4B9" font-size="30" font-family="Arial, sans-serif">${program.title
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <rect x="140" y="396" width="920" height="2" fill="url(#line)" fill-opacity="0.35"/>
-  <text x="140" y="478" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">STATUS</text>
-  <text x="140" y="540" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${submission.status.toUpperCase()}</text>
-  <text x="140" y="640" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">RECOMMENDATION</text>
-  <text x="140" y="702" fill="#F5F7FB" font-size="52" font-family="Georgia, serif">${(
-    review?.recommendation ?? "pending"
-  ).toUpperCase()}</text>
-  <text x="140" y="802" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">SUBMITTER</text>
-  <text x="140" y="864" fill="#F5F7FB" font-size="44" font-family="Arial, sans-serif">${shortWalletAddress(
-    submitter?.walletAddress ?? ""
-  )}</text>
-  <text x="140" y="960" fill="#90A4B9" font-size="28" font-family="Arial, sans-serif">TAGS</text>
-  <text x="140" y="1022" fill="#F5F7FB" font-size="40" font-family="Arial, sans-serif">${tags
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")}</text>
-  <text x="140" y="1080" fill="#90A4B9" font-size="24" font-family="Arial, sans-serif">Nightshift build 072 • MPL Core proof asset</text>
-</svg>`;
-    response.type("image/svg+xml").send(svg);
+    response
+      .type("image/svg+xml")
+      .send(buildProofImageSvg({ program, review, submission, submitter }));
+  })
+);
+
+app.get(
+  "/api/proofs/:submissionId/image.png",
+  asyncRoute(async (request, response) => {
+    const state = await db.read();
+    const submissionId = getRouteParam(request, "submissionId");
+    const submission = state.submissions.find((entry) => entry.id === submissionId);
+    if (!submission) {
+      response.status(404).type("text/plain").send("Not found");
+      return;
+    }
+    const program = getProgram(state, submission.programId);
+    const review = state.reviews.find((entry) => entry.submissionId === submission.id);
+    const submitter = state.users.find((entry) => entry.id === submission.submitterUserId);
+    response
+      .type("image/png")
+      .send(renderSvgToPng(buildProofImageSvg({ program, review, submission, submitter }), 1200));
   })
 );
 
