@@ -1466,6 +1466,15 @@ app.post(
   })
 );
 
+function createDiceBearGlassPngUrl(seed: string) {
+  const url = new URL(`https://api.dicebear.com/9.x/glass/png`);
+  url.searchParams.set("seed", seed);
+  url.searchParams.set("size", "512");
+  url.searchParams.set("scale", "90");
+  url.searchParams.set("backgroundType", "solid,gradientLinear");
+  return url.toString();
+}
+
 app.get(
   "/api/proofs/:submissionId/metadata.json",
   asyncRoute(async (request, response) => {
@@ -1479,12 +1488,13 @@ app.get(
     const program = getProgram(state, submission.programId);
     const review = state.reviews.find((entry) => entry.submissionId === submission.id);
     const minting = getMintingStatus();
-    const baseUrl = getEnv("BOUNTYPROOF_PUBLIC_BASE_URL") ?? "";
+    const baseUrl = getEnv("BOUNTYPROOF_PUBLIC_BASE_URL") ?? `http://localhost:${port}`;
+    const imageUrl = createDiceBearGlassPngUrl(`bountyproof-${submission.id}-${submission.submitterUserId}`);
     response.json({
       name: `BountyProof 072: ${submission.title}`,
       symbol: "BP072",
       description: `Collection-backed proof asset for the approved BountyProof submission "${submission.title}".`,
-      image: `${baseUrl}/api/proofs/${submission.id}/image.svg`,
+      image: imageUrl,
       external_url: `${baseUrl}/proofs`,
       attributes: [
         { trait_type: "Program", value: program.title },
@@ -1497,8 +1507,8 @@ app.get(
         category: "image",
         files: [
           {
-            uri: `${baseUrl}/api/proofs/${submission.id}/image.svg`,
-            type: "image/svg+xml"
+            uri: imageUrl,
+            type: "image/png"
           }
         ]
       },
